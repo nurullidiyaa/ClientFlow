@@ -21,23 +21,23 @@ I built this project to strengthen my practical skills in frontend development, 
 
 An overview of business activity and summary metrics.
 
-![ClientFlow Dashboard](screenshots/dashboard.png)
+![ClientFlow Dashboard](Screenshots/dashboard.png)
 
 ### Client Management
 
 View and manage client records.
 
-![Client List](screenshots/clients-list.png)
+![Client List](Screenshots/clients-list.png)
 
 Add new clients through a dedicated form.
 
-![Add Client Form](screenshots/add-client.png)
+![Add Client Form](Screenshots/add-client.png)
 
 ### Payment Management
 
 Record and manage payments associated with invoices, including payment methods, transaction IDs, and payment statuses.
 
-![Payments](screenshots/payments.png)
+![Payments](Screenshots/payments.png)
 
 ## Tech Stack
 
