@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
@@ -20,9 +21,12 @@ class ProjectController extends Controller
             'client_id' => 'required|exists:clients,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|string|max:50',
-            'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date',
+            'status' => [
+                'required',
+                Rule::in(['pending', 'in_progress', 'completed', 'on_hold']),
+            ],
+            'start_date' => 'nullable|date|required_with:due_date|before_or_equal:due_date',
+            'due_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         $project = Project::create($validated);
@@ -45,9 +49,12 @@ class ProjectController extends Controller
             'client_id' => 'required|exists:clients,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|string|max:50',
-            'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date',
+            'status' => [
+                'required',
+                Rule::in(['pending', 'in_progress', 'completed', 'on_hold']),
+            ],
+            'start_date' => 'nullable|date|required_with:due_date|before_or_equal:due_date',
+            'due_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         $project->update($validated);

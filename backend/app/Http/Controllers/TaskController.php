@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TaskController extends Controller
 {
@@ -21,15 +22,44 @@ class TaskController extends Controller
         return response()->json($task);
     }
 
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'project_id' => [
+                'required',
+                'integer',
+                'exists:projects,id',
+            ],
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'status' => [
+                'required',
+                Rule::in(['pending', 'in_progress', 'completed']),
+            ],
+            'due_date' => 'nullable|date',
+        ]);
+
+        $task = Task::create($validated);
+
+        return response()->json($task, 201);
+    }
+
     public function update(Request $request, int $id)
     {
         $task = Task::findOrFail($id);
 
         $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
+            'project_id' => [
+                'required',
+                'integer',
+                'exists:projects,id',
+            ],
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|string|max:50',
+            'status' => [
+                'required',
+                Rule::in(['pending', 'in_progress', 'completed']),
+            ],
             'due_date' => 'nullable|date',
         ]);
 
@@ -45,22 +75,7 @@ class TaskController extends Controller
         $task->delete();
 
         return response()->json([
-            'message' => 'Task deleted successfully'
+            'message' => 'Task deleted successfully',
         ]);
-    }
-
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'required|string|max:50',
-            'due_date' => 'nullable|date',
-        ]);
-
-        $task = Task::create($validated);
-
-        return response()->json($task, 201);
     }
 }

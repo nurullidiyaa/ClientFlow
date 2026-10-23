@@ -17,11 +17,31 @@ type Client = {
   name: string;
 };
 
+const API_URL = "http://127.0.0.1:8000/api";
+
+function getList<T>(data: unknown): T[] {
+  if (Array.isArray(data)) {
+    return data as T[];
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    "data" in data &&
+    Array.isArray(data.data)
+  ) {
+    return data.data as T[];
+  }
+
+  return [];
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState("");
@@ -30,108 +50,193 @@ export default function ProjectsPage() {
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
+  const loadProjects = async () => {
+    const response = await fetch(`${API_URL}/projects`, {
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to load projects.");
+    }
+
+    const data: unknown = await response.json();
+    setProjects(getList<Project>(data));
+  };
+
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/projects")
-      .then((response) => response.json())
-      .then((data) => {
-        setProjects(data);
-      });
-
-    fetch("http://127.0.0.1:8000/api/clients")
-      .then((response) => response.json())
-      .then((data) => {
-        setClients(data);
-      });
-  }, []);
-
-      const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const url = editingProjectId
-          ? `http://127.0.0.1:8000/api/projects/${editingProjectId}`
-          : "http://127.0.0.1:8000/api/projects";
-
-        const response = await fetch(url, {
-          method: editingProjectId ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            client_id: Number(clientId),
-            name,
-            description,
-            status,
-            start_date: startDate || null,
-            due_date: dueDate || null,
+    const loadData = async () => {
+      try {
+        const [projectsResponse, clientsResponse] = await Promise.all([
+          fetch(`${API_URL}/projects`, {
+            headers: { Accept: "application/json" },
           }),
-        });
+          fetch(`${API_URL}/clients`, {
+            headers: { Accept: "application/json" },
+          }),
+        ]);
 
-        const data = await response.json();
-
-        if (editingProjectId) {
-          setProjects((currentProjects) =>
-            currentProjects.map((project) =>
-              project.id === editingProjectId ? data : project
-            )
-          );
-        } else {
-          setProjects((currentProjects) => [...currentProjects, data]);
+        if (!projectsResponse.ok || !clientsResponse.ok) {
+          throw new Error("Failed to load data.");
         }
 
-        setEditingProjectId(null);
-        setShowForm(false);
-      };
+        const projectsData: unknown = await projectsResponse.json();
+        const clientsData: unknown = await clientsResponse.json();
 
-  const handleDelete = async (id: number) => {
-  const confirmed = window.confirm(
-    "Are you sure you want to delete this project?"
-  );
+        setProjects(getList<Project>(projectsData));
+        setClients(getList<Client>(clientsData));
+      } catch {
+        alert("Unable to load projects or clients. Please check your server.");
+      }
+    };
 
-  if (!confirmed) return;
+    loadData();
+  }, []);
 
-  const response = await fetch(
-    `http://127.0.0.1:8000/api/projects/${id}`,
-    {
-      method: "DELETE",
+  const resetForm = () => {
+    setName("");
+    setClientId("");
+    setDescription("");
+    setStatus("pending");
+    setStartDate("");
+    setDueDate("");
+    setEditingProjectId(null);
+    setShowForm(false);
+  };
+
+  const handleStartDateChange = (newStartDate: string) => {
+    setStartDate(newStartDate);
+
+    // Clear Due Date if it is now earlier than Start Date.
+    if (newStartDate && dueDate && dueDate < newStartDate) {
+      setDueDate("");
     }
-  );
+  };
 
-  const data = await response.json();
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-  console.log(data);
+    if (!name.trim()) {
+      alert("Please enter a project name.");
+      return;
+    }
 
-  setProjects((currentProjects) =>
-    currentProjects.filter((project) => project.id !== id)
-  );
-};
+    if (!clientId) {
+      alert("Please select a client.");
+      return;
+    }
+
+    if (startDate && dueDate && dueDate < startDate) {
+      alert("Due Date cannot be earlier than Start Date. Please choose another date.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const url = editingProjectId
+        ? `${API_URL}/projects/${editingProjectId}`
+        : `${API_URL}/projects`;
+
+      const response = await fetch(url, {
+        method: editingProjectId ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: Number(clientId),
+          name: name.trim(),
+          description: description.trim() || null,
+          status,
+          start_date: startDate || null,
+          due_date: dueDate || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const message =
+          data.errors && typeof data.errors === "object"
+            ? Object.values(data.errors).flat().join("\n")
+            : data.message || "Failed to save project.";
+
+        alert(message);
+        return;
+      }
+
+      await loadProjects();
+      resetForm();
+
+      alert(
+        editingProjectId
+          ? "Project updated successfully."
+          : "Project saved successfully."
+      );
+    } catch {
+      alert(
+        "Unable to save or reload the project. Please check your Laravel server."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleEdit = (project: Project) => {
-  setEditingProjectId(project.id);
-  setName(project.name);
-  setClientId(String(project.client_id));
-  setDescription(project.description || "");
-  setStatus(project.status);
-  setStartDate(project.start_date || "");
-  setDueDate(project.due_date || "");
-  setShowForm(true);
-};
+    setEditingProjectId(project.id);
+    setName(project.name || "");
+    setClientId(String(project.client_id ?? ""));
+    setDescription(project.description || "");
+    setStatus(project.status || "pending");
+    setStartDate(project.start_date?.slice(0, 10) || "");
+    setDueDate(project.due_date?.slice(0, 10) || "");
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this project?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/projects/${id}`, {
+        method: "DELETE",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        alert(data.message || "Failed to delete project.");
+        return;
+      }
+
+      setProjects((currentProjects) =>
+        currentProjects.filter((project) => project.id !== id)
+      );
+    } catch {
+      alert("Unable to delete project. Please check your server.");
+    }
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
               Projects
             </h1>
-
             <p className="mt-1 text-slate-500">
               Manage your projects and track their progress.
             </p>
           </div>
 
           <button
-            onClick={() => setShowForm(true)}
+            type="button"
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
             className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800"
           >
             + Add Project
@@ -141,7 +246,7 @@ export default function ProjectsPage() {
         {showForm && (
           <div className="mb-8 mt-8 rounded-xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
-              Add New Project
+              {editingProjectId ? "Edit Project" : "Add New Project"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -156,9 +261,9 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Project Name
                 </label>
-
                 <input
                   type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
@@ -170,8 +275,8 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Client
                 </label>
-
                 <select
+                  required
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
@@ -179,7 +284,6 @@ export default function ProjectsPage() {
                   <option value="" disabled>
                     Select a client
                   </option>
-
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -192,7 +296,6 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Description
                 </label>
-
                 <textarea
                   rows={4}
                   value={description}
@@ -206,7 +309,6 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Status
                 </label>
-
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
@@ -215,6 +317,7 @@ export default function ProjectsPage() {
                   <option value="pending">Pending</option>
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Completed</option>
+                  <option value="on_hold">On Hold</option>
                 </select>
               </div>
 
@@ -222,11 +325,11 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Start Date
                 </label>
-
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
+                  max={dueDate || undefined}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
                 />
               </div>
@@ -235,10 +338,10 @@ export default function ProjectsPage() {
                 <label className="text-sm font-medium text-slate-700">
                   Due Date
                 </label>
-
                 <input
                   type="date"
                   value={dueDate}
+                  min={startDate || undefined}
                   onChange={(e) => setDueDate(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
                 />
@@ -247,7 +350,7 @@ export default function ProjectsPage() {
               <div className="mt-2 flex gap-3 sm:col-span-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={resetForm}
                   className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
@@ -255,9 +358,14 @@ export default function ProjectsPage() {
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800"
+                  disabled={saving}
+                  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Save Project
+                  {saving
+                    ? "Saving..."
+                    : editingProjectId
+                      ? "Update Project"
+                      : "Save Project"}
                 </button>
               </div>
             </form>
@@ -272,84 +380,94 @@ export default function ProjectsPage() {
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Project
                   </th>
-
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
-                    Client ID
+                    Client
                   </th>
-
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Status
                   </th>
-
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Start Date
                   </th>
-
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Due Date
                   </th>
-
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
-                  Actions
-                </th>
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
-                {projects.map((project) => (
-                  <tr
-                    key={project.id}
-                    className="border-b border-slate-100"
-                  >
-                    <td className="px-6 py-5">
-                      <div>
+                {projects.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-6 py-8 text-center text-sm text-slate-500"
+                    >
+                      No projects found.
+                    </td>
+                  </tr>
+                ) : (
+                  projects.map((project, index) => (
+                    <tr
+                      key={
+                        project.id != null
+                          ? project.id
+                          : `project-${index}`
+                      }
+                      className="border-b border-slate-100"
+                    >
+                      <td className="px-6 py-5">
                         <p className="font-medium text-slate-900">
-                          {project.name}
+                          {project.name || "-"}
                         </p>
-
                         <p className="mt-1 text-sm text-slate-500">
                           {project.description || "-"}
                         </p>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      {project.client_id}
-                    </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {clients.find(
+                          (client) => client.id === Number(project.client_id)
+                        )?.name || "-"}
+                      </td>
 
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      {project.status}
-                    </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {project.status || "-"}
+                      </td>
 
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      {project.start_date || "-"}
-                    </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {project.start_date?.slice(0, 10) || "-"}
+                      </td>
 
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      {project.due_date || "-"}
-                    </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {project.due_date?.slice(0, 10) || "-"}
+                      </td>
 
-                    <td className="px-6 py-5">
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(project)}
-                          className="text-sm font-medium text-slate-600 hover:text-slate-900"
-                        >
-                          Edit
-                        </button>
+                      <td className="px-6 py-5">
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(project)}
+                            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+                          >
+                            Edit
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(project.id)}
-                          className="text-sm font-medium text-red-600 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(project.id)}
+                            disabled={project.id == null}
+                            className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -28,49 +29,77 @@ export default function TasksPage() {
   const [status, setStatus] = useState("pending");
   const [dueDate, setDueDate] = useState("");
 
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/tasks")
+      .then((response) => response.json())
+      .then((data) => setTasks(data));
+
+    fetch("http://127.0.0.1:8000/api/projects")
+      .then((response) => response.json())
+      .then((data) => setProjects(data));
+  }, []);
+
+  const resetForm = () => {
+    setTitle("");
+    setProjectId("");
+    setDescription("");
+    setStatus("pending");
+    setDueDate("");
+    setEditingTaskId(null);
+    setShowForm(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-const url = editingTaskId
-  ? `http://127.0.0.1:8000/api/tasks/${editingTaskId}`
-  : "http://127.0.0.1:8000/api/tasks";
+    const url = editingTaskId
+      ? `http://127.0.0.1:8000/api/tasks/${editingTaskId}`
+      : "http://127.0.0.1:8000/api/tasks";
 
-const response = await fetch(url, {
-  method: editingTaskId ? "PUT" : "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    project_id: Number(projectId),
-    title,
-    description,
-    status,
-    due_date: dueDate || null,
-  }),
-});
+    try {
+      const response = await fetch(url, {
+        method: editingTaskId ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          project_id: Number(projectId),
+          title,
+          description: description || null,
+          status,
+          due_date: dueDate || null,
+        }),
+      });
 
-  const data = await response.json();
+      const data = await response.json();
 
-  if (editingTaskId) {
-    setTasks((currentTasks) =>
-        currentTasks.map((task) =>
-        task.id === editingTaskId ? data : task
-        )
-    );
-    } else {
-    setTasks((currentTasks) => [...currentTasks, data]);
+      if (!response.ok) {
+        const errorMessage = data.errors
+          ? Object.values(data.errors).flat().join("\n")
+          : data.message || "Failed to save task.";
+
+        alert(errorMessage);
+        return;
+      }
+
+      if (editingTaskId) {
+        setTasks((currentTasks) =>
+          currentTasks.map((task) =>
+            task.id === editingTaskId ? data : task
+          )
+        );
+      } else {
+        setTasks((currentTasks) => [...currentTasks, data]);
+      }
+
+      resetForm();
+    } catch {
+      alert("Unable to connect to the server. Please try again.");
     }
+  };
 
-  setTitle("");
-  setProjectId("");
-  setDescription("");
-  setStatus("pending");
-  setDueDate("");
-  setEditingTaskId(null);
-  setShowForm(false);
-};
-
-    const handleEdit = (task: Task) => {
+  const handleEdit = (task: Task) => {
     setEditingTaskId(task.id);
     setTitle(task.title);
     setProjectId(String(task.project_id));
@@ -78,44 +107,40 @@ const response = await fetch(url, {
     setStatus(task.status);
     setDueDate(task.due_date || "");
     setShowForm(true);
-    };
+  };
 
-    const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number) => {
     const confirmed = window.confirm(
-        "Are you sure you want to delete this task?"
+      "Are you sure you want to delete this task?"
     );
 
     if (!confirmed) return;
 
-    const response = await fetch(
+    try {
+      const response = await fetch(
         `http://127.0.0.1:8000/api/tasks/${id}`,
         {
-        method: "DELETE",
+          method: "DELETE",
+          headers: {
+            Accept: "application/json",
+          },
         }
-    );
+      );
 
-    const data = await response.json();
+      const data = await response.json();
 
-    console.log(data);
+      if (!response.ok) {
+        alert(data.message || "Failed to delete task.");
+        return;
+      }
 
-    setTasks((currentTasks) =>
+      setTasks((currentTasks) =>
         currentTasks.filter((task) => task.id !== id)
-    );
-    };
-
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/tasks")
-      .then((response) => response.json())
-      .then((data) => {
-        setTasks(data);
-      });
-
-    fetch("http://127.0.0.1:8000/api/projects")
-      .then((response) => response.json())
-      .then((data) => {
-        setProjects(data);
-      });
-  }, []);
+      );
+    } catch {
+      alert("Unable to connect to the server. Please try again.");
+    }
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 p-6">
@@ -132,7 +157,11 @@ const response = await fetch(url, {
           </div>
 
           <button
-            onClick={() => setShowForm(true)}
+            type="button"
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
             className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800"
           >
             + Add Task
@@ -142,7 +171,7 @@ const response = await fetch(url, {
         {showForm && (
           <div className="mb-8 mt-8 rounded-xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">
-              Add New Task
+              {editingTaskId ? "Edit Task" : "Add New Task"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -150,8 +179,8 @@ const response = await fetch(url, {
             </p>
 
             <form
-                onSubmit={handleSubmit}
-                className="mt-6 grid gap-4 sm:grid-cols-2"
+              onSubmit={handleSubmit}
+              className="mt-6 grid gap-4 sm:grid-cols-2"
             >
               <div>
                 <label className="text-sm font-medium text-slate-700">
@@ -160,6 +189,7 @@ const response = await fetch(url, {
 
                 <input
                   type="text"
+                  required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
@@ -173,6 +203,7 @@ const response = await fetch(url, {
                 </label>
 
                 <select
+                  required
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-500"
@@ -235,7 +266,7 @@ const response = await fetch(url, {
               <div className="mt-2 flex gap-3 sm:col-span-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={resetForm}
                   className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
@@ -245,7 +276,7 @@ const response = await fetch(url, {
                   type="submit"
                   className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800"
                 >
-                  Save Task
+                  {editingTaskId ? "Update Task" : "Save Task"}
                 </button>
               </div>
             </form>
@@ -272,9 +303,10 @@ const response = await fetch(url, {
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Due Date
                   </th>
+
                   <th className="px-6 py-4 text-sm font-semibold text-slate-600">
                     Actions
-                    </th>
+                  </th>
                 </tr>
               </thead>
 
@@ -295,7 +327,9 @@ const response = await fetch(url, {
                     </td>
 
                     <td className="px-6 py-5 text-sm text-slate-600">
-                      {task.project_id}
+                      {projects.find(
+                        (project) => project.id === task.project_id
+                      )?.name || `Project #${task.project_id}`}
                     </td>
 
                     <td className="px-6 py-5 text-sm text-slate-600">
@@ -307,23 +341,23 @@ const response = await fetch(url, {
                     </td>
 
                     <td className="px-6 py-5">
-                    <div className="flex gap-3">
+                      <div className="flex gap-3">
                         <button
-                        type="button"
-                        onClick={() => handleEdit(task)}
-                        className="text-sm font-medium text-slate-600 hover:text-slate-900"
+                          type="button"
+                          onClick={() => handleEdit(task)}
+                          className="text-sm font-medium text-slate-600 hover:text-slate-900"
                         >
-                        Edit
+                          Edit
                         </button>
 
                         <button
-                        type="button"
-                         onClick={() => handleDelete(task.id)}
-                        className="text-sm font-medium text-red-600 hover:text-red-700"
+                          type="button"
+                          onClick={() => handleDelete(task.id)}
+                          className="text-sm font-medium text-red-600 hover:text-red-700"
                         >
-                        Delete
+                          Delete
                         </button>
-                    </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
